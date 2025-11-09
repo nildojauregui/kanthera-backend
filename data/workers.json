@@ -1,5 +1,38 @@
 [
-  { "id": "DIP-0001", "name": "Mario Rossi", "cf": "RSSMRA80A01H501U", "role": "Posatore", "docs": {} },
-  { "id": "DIP-0002", "name": "Giuseppe Verdi", "cf": "VRDGPP70B02F205U", "role": "Manovale", "docs": {} },
-  { "id": "DIP-0003", "name": "Luca Bianchi", "cf": "BNCLCU85C03D612W", "role": "Elettricista", "docs": {} }
+  {
+    "id": "DIP-0001",
+    "name": "Freud Teodor Gutierrez Tarco",
+    "cf": "GTTFRT81M17Z404K",
+    "role": "Posatore specializzato",
+    "docs": {
+      "visita_medica": "2026-08-30",
+      "corso_generale": "2029-10-01",
+      "corso_specifica_fs": "2028-10-01",
+      "dpi_consegna": true,
+      "tesserino": true,
+      "antincendio": "2027-09-15",
+      "ps": "2027-09-15",
+      "preposto": true
+    }
+  },
+  {
+    "id": "DIP-0002",
+    "name": "Giuseppe Verdi",
+    "cf": "VRDGPP70B02F205U",
+    "role": "Manovale",
+    "docs": {
+      "visita_medica": "2026-06-01",
+      "corso_generale": "2029-06-01",
+      "corso_specifica_fs": "2028-06-01",
+      "dpi_consegna": true,
+      "tesserino": true
+    }
+  },
+  {
+    "id": "DIP-0003",
+    "name": "Luca Bianchi",
+    "cf": "BNCLCU85C03D612W",
+    "role": "Elettricista",
+    "docs": {}
+  }
 ]
