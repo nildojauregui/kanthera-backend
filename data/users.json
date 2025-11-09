@@ -1,0 +1,20 @@
+[
+  {
+    "id": "USR-0001",
+    "email": "nildo@paviservizi.it",
+    "name": "Nildo Jauregui",
+    "company_role": "company_admin"
+  },
+  {
+    "id": "USR-0002",
+    "email": "freud@paviservizi.it",
+    "name": "Freud Gutierrez",
+    "company_role": "company_manager"
+  },
+  {
+    "id": "USR-0003",
+    "email": "fortu@paviservizi.it",
+    "name": "Fortunato Quispe",
+    "company_role": "company_operator"
+  }
+]
