@@ -1,0 +1,92 @@
+{
+  "companies": [
+    {
+      "id": "IMP-0001",
+      "name": "Impresa Esecutrice Srl",
+      "piva": "12345678901",
+      "pec": "impresa@pec.it",
+      "durc_expiry": "2026-01-01"
+    },
+    {
+      "id": "IMP-0002",
+      "name": "Subappalti Alfa Srl",
+      "piva": "10987654321",
+      "pec": "sub@pec.it",
+      "durc_expiry": "2026-06-30"
+    }
+  ],
+  "workers": [
+    {
+      "id": "DIP-0001",
+      "company_id": "IMP-0001",
+      "name": "Mario Rossi",
+      "cf": "RSSMRA80A01H501U",
+      "role": "Posatore",
+      "docs": {
+        "corso": "2026-05-20",
+        "visita": "2026-09-01"
+      }
+    },
+    {
+      "id": "DIP-0002",
+      "company_id": "IMP-0001",
+      "name": "Giuseppe Verdi",
+      "cf": "VRDGPP80A01H501U",
+      "role": "Manovale",
+      "docs": {
+        "corso": "2026-03-15",
+        "visita": "2025-11-25"
+      }
+    },
+    {
+      "id": "DIP-0003",
+      "company_id": "IMP-0002",
+      "name": "Luca Bianchi",
+      "cf": "BNCLCU80A01H501U",
+      "role": "Elettricista",
+      "docs": {
+        "corso": "2025-12-10",
+        "visita": "2026-02-15"
+      }
+    }
+  ],
+  "sites": [
+    {
+      "id": "CNT-0001",
+      "name": "Sede Cliente Verdi \u2013 Piano 3",
+      "address": "Via Esempio 1, Milano",
+      "client": "Committente Srl",
+      "client_cf_piva": "IT12345678901",
+      "cse": {
+        "name": "Ing. CSE",
+        "email": "cse@example.com"
+      },
+      "dates": {
+        "start": "2025-11-01",
+        "end": "2026-02-28"
+      },
+      "workers": [
+        "DIP-0001",
+        "DIP-0002"
+      ]
+    },
+    {
+      "id": "CNT-0002",
+      "name": "Ristrutturazione Uffici \u2013 Lotto B",
+      "address": "Via Roma 22, Pavia",
+      "client": "Edil Rossi Srl",
+      "client_cf_piva": "IT99887766554",
+      "cse": {
+        "name": "Ing. Bianchi",
+        "email": "cse@rossi.it"
+      },
+      "dates": {
+        "start": "2025-12-10",
+        "end": "2026-03-15"
+      },
+      "workers": [
+        "DIP-0003"
+      ]
+    }
+  ]
+}
