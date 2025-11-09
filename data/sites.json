@@ -4,19 +4,19 @@
     "name": "Cantiere Sede Cliente Verdi – Piano 3",
     "address": "Via Roma 12, Bologna",
     "client": "Cliente Verdi Srl",
-    "client_cf_piva": "01234567890",
-    "cse": { "name": "Paolo Rossi", "email": "paolo.rossi@verdi.it" },
+    "client_phone": "051 1234567",
     "dates": { "start": "2025-11-01", "end": "2026-03-31" },
-    "workers": []
-  },
-  {
-    "id": "CNT-0002",
-    "name": "Ristrutturazione Uffici – Lotto B",
-    "address": "Via Milano 45, Modena",
-    "client": "Uffici & Co.",
-    "client_cf_piva": "09876543210",
     "cse": { "name": "Laura Bianchi", "email": "laura.bianchi@uffici.it" },
-    "dates": { "start": "2025-10-15", "end": "2026-02-28" },
-    "workers": []
+    "roles": [
+      { "user_id": "USR-0001", "role": "owner" },
+      { "user_id": "USR-0002", "role": "supervisor" }
+    ],
+    "meta": {
+      "gps": null,
+      "duration_days": 150,
+      "work_type": "Ristrutturazione",
+      "warnings": []
+    },
+    "workers": ["DIP-0001", "DIP-0002"]
   }
 ]
