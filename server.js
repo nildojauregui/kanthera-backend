@@ -1,4 +1,4 @@
-// server.js — Kanthera Backend V1.5 (ESM)
+// server.js — Kanthera Backend V1.6 (ESM, CORS fix + seed demo)
 
 import express from "express";
 import cors from "cors";
@@ -13,7 +13,7 @@ import OpenAI from "openai";
 
 /* -------------------- Paths & FS helpers -------------------- */
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname  = path.dirname(__filename);
 
 const DATA_DIR      = path.join(__dirname, "data");
 const UPLOADS_DIR   = path.join(__dirname, "uploads");
@@ -40,9 +40,11 @@ await ensureJson(COMPANY_FILE, "{}");
 async function readJson(file) {
   try {
     const t = await fsp.readFile(file, "utf8");
-    if (!t) return file.endsWith(".json") ? (file === COMPANY_FILE ? {} : []) : null;
+    if (!t) return file === COMPANY_FILE ? {} : [];
     return JSON.parse(t);
-  } catch { return file === COMPANY_FILE ? {} : []; }
+  } catch {
+    return file === COMPANY_FILE ? {} : [];
+  }
 }
 async function writeJson(file, data) {
   const pretty = JSON.stringify(data, null, 2);
@@ -50,7 +52,6 @@ async function writeJson(file, data) {
 }
 
 /* -------------------- Permissions model -------------------- */
-// Azioni per ruoli di CANTIERE (owner, coordinator, contractor, subcontractor, supervisor, admin)
 const PERM = {
   VIEW_PSC:                 ['owner','coordinator','contractor','subcontractor','supervisor','admin'],
   EDIT_PSC:                 ['coordinator','admin'],
@@ -67,20 +68,37 @@ const PERM = {
 };
 const COMPANY_CAN_INVITE = ['company_admin','company_manager'];
 
-/* -------------------- App & Middleware -------------------- */
+/* -------------------- App & CORS (Opzione 1) -------------------- */
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
-const ALLOW_ORIGIN = process.env.CORS_ORIGIN || "*";
-app.use(cors({
-  origin: ALLOW_ORIGIN === "*" ? true : ALLOW_ORIGIN,
-  credentials: false,
-}));
+// Imposta il dominio del frontend (senza slash finale)
+const ALLOW_ORIGIN = (process.env.CORS_ORIGIN || "https://kanthera-backend.netlify.app").replace(/\/$/, "");
 
-app.use("/uploads", express.static(UPLOADS_DIR));
+// Config CORS robusta + preflight
+const corsCfg = {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // es. curl/health
+    if (ALLOW_ORIGIN === "*" || origin === ALLOW_ORIGIN) return cb(null, true);
+    return cb(new Error(`CORS blocked: ${origin}`), false);
+  },
+  methods: ["GET","POST","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","x-user-id","x-company-role"],
+  credentials: false,
+};
+app.options("*", cors(corsCfg));
+app.use(cors(corsCfg));
+
+// Logging minimale utile per debug Render
+app.use((req,res,next)=>{
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} origin=${req.headers.origin||'-'}`);
+  next();
+});
+
+app.use("/uploads",   express.static(UPLOADS_DIR));
 app.use("/generated", express.static(GENERATED_DIR));
 
-// Auth light (demo): headers x-user-id, x-company-role
+// Auth light (demo)
 app.use(async (req, res, next) => {
   const id = req.header("x-user-id") || "USR-0001";
   const company_role = req.header("x-company-role") || "company_admin";
@@ -155,14 +173,12 @@ app.get("/api/sites/:id", async (req, res) => {
 app.post("/api/sites", async (req, res) => {
   try {
     const payload = req.body || {};
-    // se non arrivano i ruoli, assegna almeno l'owner a chi crea
     if(!payload.roles || !payload.roles.length){
       payload.roles = [{ user_id: req.user.id, role: "owner" }];
     }
     const errors = validateSitePayload(payload);
     if (errors.length) return res.status(400).json({ ok: false, errors });
 
-    // calcolo durata, avvisi
     if (payload.dates?.start && payload.dates?.end) {
       const d1 = new Date(payload.dates.start);
       const d2 = new Date(payload.dates.end);
@@ -250,7 +266,6 @@ app.patch("/api/workers/:id", async (req, res) => {
     const idx = workers.findIndex(w => w.id === req.params.id);
     if (idx === -1) return res.status(404).json({ ok: false, error: "not found" });
     const merged = { ...workers[idx], ...req.body };
-    // merge profondo per docs
     if (req.body?.docs) {
       merged.docs = { ...(workers[idx].docs||{}), ...(req.body.docs||{}) };
     }
@@ -270,19 +285,19 @@ app.delete("/api/workers/:id", async (req,res)=>{
 /* -------------------- Upload & OCR+AI -------------------- */
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, UPLOADS_DIR),
-  filename: (_, file, cb) => {
+  filename:    (_, file, cb) => {
     const safe = file.originalname.replace(/\s+/g, "_");
     cb(null, `${Date.now()}_${safe}`);
   }
 });
 const upload = multer({ storage });
+
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 app.post("/api/workers/:id/docs", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: "file missing" });
 
-    // In MVP: OCR placeholder (puoi integrare Google Vision qui)
     const ocrText = `OCR from: ${req.file.originalname}`;
 
     let extracted = {};
@@ -312,14 +327,16 @@ TESTO:
         const txt = out.choices?.[0]?.message?.content || "{}";
         extracted = JSON.parse(txt);
         confidence = extracted.confidence_overall ?? 0.7;
-      } catch { extracted = {}; }
+      } catch {
+        extracted = {};
+      }
     }
 
     res.json({
       ok: true,
       file: `/uploads/${req.file.filename}`,
-      url: `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`,
-      ocr: ocrText,
+      url:  `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`,
+      ocr:  ocrText,
       extracted,
       confidence
     });
@@ -332,9 +349,9 @@ app.post("/api/pos", async (req, res) => {
     const { site, workers } = req.body || {};
     if (!site?.name) return res.status(400).json({ ok: false, error: "site required" });
 
-    const company = await readJson(COMPANY_FILE);
+    const company  = await readJson(COMPANY_FILE);
     const filename = `POS_${site.id || "SITE"}_${new Date().toISOString().replace(/[:.]/g, "-")}.pdf`;
-    const outPath = path.join(GENERATED_DIR, filename);
+    const outPath  = path.join(GENERATED_DIR, filename);
 
     const doc = new PDFDocument({ size: "A4", margin: 40 });
     const stream = fs.createWriteStream(outPath);
@@ -369,7 +386,7 @@ app.post("/api/pos", async (req, res) => {
     doc.text(`RLS: ${rls?.name || '—'}`);
     doc.moveDown();
 
-    // 4) Elenco lavoratori (idoneità & formazione)
+    // 4) Elenco lavoratori
     doc.text("4) Elenco lavoratori", { underline: true });
     (workers || []).forEach((w, i) => {
       const idoneita = w.docs?.visita_medica ? 'Idoneo' : '—';
@@ -381,17 +398,12 @@ app.post("/api/pos", async (req, res) => {
     });
     doc.moveDown();
 
-    // Placeholder 5..10
-    doc.text("5) Macchinari e attrezzature — da completare", { underline: true });
-    doc.moveDown();
-    doc.text("6) Procedure operative — da completare", { underline: true });
-    doc.moveDown();
-    doc.text("7) Valutazione rischi specifici — da completare", { underline: true });
-    doc.moveDown();
-    doc.text("8) Misure di prevenzione e protezione — da completare", { underline: true });
-    doc.moveDown();
-    doc.text("9) Piano di emergenza — da completare", { underline: true });
-    doc.moveDown();
+    // Placeholder
+    doc.text("5) Macchinari e attrezzature — da completare", { underline: true }).moveDown();
+    doc.text("6) Procedure operative — da completare", { underline: true }).moveDown();
+    doc.text("7) Valutazione rischi specifici — da completare", { underline: true }).moveDown();
+    doc.text("8) Misure di prevenzione e protezione — da completare", { underline: true }).moveDown();
+    doc.text("9) Piano di emergenza — da completare", { underline: true }).moveDown();
     doc.text("10) Cronoprogramma POS — da completare", { underline: true });
 
     doc.end();
@@ -400,15 +412,95 @@ app.post("/api/pos", async (req, res) => {
     res.json({
       ok: true,
       file: `/generated/${filename}`,
-      url: `${req.protocol}://${req.get("host")}/generated/${filename}`
+      url:  `${req.protocol}://${req.get("host")}/generated/${filename}`
     });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+/* -------------------- SEED (demo, opzionale) -------------------- */
+// Esegui UNA VOLTA per popolare company/sites/workers con dati demo.
+// Puoi rimuovere questa route dopo la demo.
+app.all("/api/seed", async (req, res) => {
+  try {
+    const company = {
+      name: "Pavi Servizi S.A.S.",
+      vat: "IT02634910182",
+      address: "Via Gravellone 11, San Martino Siccomario (PV)",
+      legal_rep: "Nildo Jauregui",
+      rspp: { name: "Ing. Marco RSPP", email: "marco.rsp@paviservizi.it" }
+    };
+    await writeJson(COMPANY_FILE, company);
+
+    const workers = [
+      {
+        id: "DIP-0001",
+        name: "Mario Rossi",
+        cf: "RSSMRA80A01H501U",
+        role: "Operaio",
+        docs: {
+          visita_medica: "2026-05-20",
+          corso_generale: "2029-09-01",
+          corso_specifica_fs: "2029-09-01",
+          dpi_consegna: true,
+          tesserino: true,
+          preposto: true,
+          antincendio: "2027-02-01",
+          ps: "2027-02-01"
+        }
+      },
+      {
+        id: "DIP-0002",
+        name: "Giuseppe Verdi",
+        cf: "VRDGPP85B12H501S",
+        role: "Operaio",
+        docs: {
+          visita_medica: "2026-01-15",
+          corso_generale: "2028-05-10",
+          corso_specifica_fs: "2028-05-10",
+          dpi_consegna: true,
+          tesserino: true,
+          antincendio: "2027-08-01"
+        }
+      }
+    ];
+    await writeJson(WORKERS_FILE, workers);
+
+    const sites = [
+      {
+        id: "CNT-0001",
+        name: "Cantiere Sede Cliente Verdi – Piano 3",
+        address: "Via Roma 12, Bologna",
+        client: "Cliente Verdi Srl",
+        dates: { start: "2025-11-01", end: "2026-03-31" },
+        cse: { name: "Laura Bianchi", email: "laura.bianchi@uffici.co" },
+        workers: ["DIP-0001","DIP-0002"],
+        roles: [{ user_id: "USR-0001", role: "owner" }],
+        meta: { duration_days: 150 }
+      },
+      {
+        id: "CNT-0002",
+        name: "Ristrutturazione Uffici – Lotto B",
+        address: "Via Milano 45, Modena",
+        client: "Uffici & Co.",
+        dates: { start: "2025-10-15", end: "2026-02-28" },
+        cse: { name: "Laura Bianchi", email: "laura.bianchi@uffici.co" },
+        workers: ["DIP-0001"],
+        roles: [{ user_id: "USR-0001", role: "owner" }],
+        meta: { duration_days: 136 }
+      }
+    ];
+    await writeJson(SITES_FILE, sites);
+
+    res.json({ ok: true, company, workersCount: workers.length, sitesCount: sites.length });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
 });
 
 /* -------------------- Capability check -------------------- */
 app.get("/api/can", async (req,res)=>{
   const action = req.query.action;
-  const siteId = req.query.site;
+  const siteId  = req.query.site;
   const allowed = await req.can(action, siteId);
   res.json({ ok: true, can: allowed });
 });
