@@ -1,17 +1,15 @@
 {
   "name": "kanthera-backend",
   "type": "module",
-  "version": "0.3.0",
-  "dependencies": {
-    "express": "^4.19.2",
-    "pdfkit": "^0.14.0",
-    "cors": "^2.8.5",
-    "body-parser": "^1.20.2",
-    "multer": "^1.4.5-lts.1",
-    "dotenv": "^16.4.5",
-    "@google-cloud/vision": "^4.3.2"
-  },
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "@google-cloud/vision": "^4.3.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "nanoid": "^5.0.7",
+    "pdfkit": "^0.15.0"
   }
 }
