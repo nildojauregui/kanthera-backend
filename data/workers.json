@@ -1,26 +1,5 @@
 [
-  {
-    "id": "DIP-0001",
-    "name": "Mario Rossi",
-    "cf": "RSSMRA80A01H501U",
-    "role": "Posatore",
-    "company_id": "IMP-0001",
-    "docs": {}
-  },
-  {
-    "id": "DIP-0002",
-    "name": "Giuseppe Verdi",
-    "cf": "VRDGPP70B02F205U",
-    "role": "Manovale",
-    "company_id": "IMP-0001",
-    "docs": {}
-  },
-  {
-    "id": "DIP-0003",
-    "name": "Luca Bianchi",
-    "cf": "BNC LC 85C03D612W",    // correggi format se necessario
-    "role": "Elettricista",
-    "company_id": "IMP-0001",
-    "docs": {}
-  }
+  { "id": "DIP-0001", "name": "Mario Rossi", "cf": "RSSMRA80A01H501U", "role": "Posatore", "docs": {} },
+  { "id": "DIP-0002", "name": "Giuseppe Verdi", "cf": "VRDGPP70B02F205U", "role": "Manovale", "docs": {} },
+  { "id": "DIP-0003", "name": "Luca Bianchi", "cf": "BNCLCU85C03D612W", "role": "Elettricista", "docs": {} }
 ]
