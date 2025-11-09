@@ -1,120 +1,162 @@
-import express from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
-import PDFDocument from 'pdfkit';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-import multer from 'multer';
-import dotenv from 'dotenv';
+// server.js — Kanthera MVP (POS + OCR fix)
 
-dotenv.config();
-const __dirname = path.resolve();
+// ---- imports & setup (ESM safe) ----
+import express from "express";
+import cors from "cors";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import multer from "multer";
+import PDFDocument from "pdfkit";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
+const PORT = process.env.PORT || 10000;
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
-const PORT = process.env.PORT || 3001;
-const ORIGIN = process.env.CORS_ORIGIN || '*';
-app.use(cors({ origin: ORIGIN }));
-app.use(bodyParser.json());
+// ---- middlewares ----
+app.use(cors({
+  origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN,
+  credentials: false,
+}));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-// Folders
-const GENERATED_DIR = path.join(__dirname, 'backend', 'backend_generated');
-const UPLOADS_DIR = path.join(__dirname, 'backend', 'uploads');
-if (!fs.existsSync(GENERATED_DIR)) fs.mkdirSync(GENERATED_DIR, {recursive:true});
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, {recursive:true});
-app.use('/generated', express.static(GENERATED_DIR));
-app.use('/uploads', express.static(UPLOADS_DIR));
-
-// Data
-const DATA_PATH = path.join(__dirname, 'data', 'seed.json');
-const readDB = () => JSON.parse(fs.readFileSync(DATA_PATH, 'utf-8'));
-const writeDB = (db) => fs.writeFileSync(DATA_PATH, JSON.stringify(db, null, 2));
-
-// Routes
-app.get('/api/health', (_,res)=>res.json({ok:true, service:'kanthera-backend'}));
-app.get('/api/sites', (_,res)=>res.json(readDB().sites));
-app.get('/api/workers', (_,res)=>res.json(readDB().workers));
-app.get('/api/companies', (_,res)=>res.json(readDB().companies));
-
-app.post('/api/sites', (req,res)=>{
-  const db = readDB();
-  const s = req.body;
-  if(!s.id) s.id = 'CNT-' + String(db.sites.length+1).padStart(4,'0');
-  db.sites.push(s);
-  writeDB(db);
-  res.json({ok:true, site:s});
-});
-
-app.post('/api/pos', (req,res)=>{
-  const payload = req.body || {};
-  const ts = new Date().toISOString().replace(/[:]/g,'-').slice(0,19);
-  const outPath = path.join(GENERATED_DIR, `POS_${(payload.site?.id||'CNT-XXXX')}_${ts}.pdf`);
-
-  const doc = new PDFDocument({ margin:40 });
-  doc.pipe(fs.createWriteStream(outPath));
-
-  // Header
-  doc.rect(40,40,530,30).fill('#0B1220').stroke();
-  doc.fill('#FFFFFF').fontSize(14).text('Kanthera — Tu costruisci. Noi semplifichiamo.', 50, 48);
-  doc.fill('#000000').moveDown(2);
-
-  doc.fontSize(20).text('POS – Piano Operativo di Sicurezza', { align:'left' });
-  doc.moveDown();
-  doc.fontSize(12).text('Site: ' + (payload.site?.name || '—'));
-  doc.text('Address: ' + (payload.site?.address || '—'));
-  doc.text('Client: ' + (payload.site?.client || '—') + ' — ' + (payload.site?.client_cf_piva || '—'));
-  doc.text('CSE: ' + (payload.site?.cse?.name || '—') + ' — ' + (payload.site?.cse?.email || '—'));
-  doc.text('Period: ' + (payload.site?.dates?.start || '—') + ' → ' + (payload.site?.dates?.end || '—'));
-  doc.moveDown();
-
-  doc.fontSize(14).text('Workers');
-  (payload.workers||[]).forEach(w=>{
-    doc.fontSize(12).text(`- ${w.name} (${w.role}) • Course: ${w.docs?.corso||'N/A'} • Checkup: ${w.docs?.visita||'N/A'}`);
-  });
-  doc.moveDown();
-
-  doc.fontSize(14).text('Risks & Measures');
-  doc.fontSize(12).text('Activities: ' + (payload.vars?.activities || '—'));
-  doc.text('Risks: ' + (payload.vars?.risks || '—'));
-  doc.text('Measures: ' + (payload.vars?.measures || '—'));
-  doc.end();
-
-  res.json({ ok:true, file: '/generated/' + path.basename(outPath) });
-});
-
-// OCR upload
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const ts = new Date().toISOString().replace(/[:]/g,'-').slice(0,19);
-    const safe = (file.originalname || 'upload').replace(/[^a-zA-Z0-9._-]/g,'_');
-    cb(null, ts + '_' + safe);
-  }
-});
-const upload = multer({ storage });
-
-let visionClient = null;
-try {
-  const vision = await import('@google-cloud/vision');
-  visionClient = new vision.ImageAnnotatorClient();
-} catch (e) {
-  console.warn('Google Vision not configured. OCR will return a stub unless configured.');
+// ---- data seed ----
+const DATA_PATH = path.join(__dirname, "data", "seed.json");
+function readSeed() {
+  const raw = fs.readFileSync(DATA_PATH, "utf8");
+  return JSON.parse(raw);
 }
 
-app.post('/api/upload', upload.single('file'), async (req,res)=>{
+// ---- ensure folders & static serving ----
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+const GENERATED_DIR = path.join(__dirname, "generated");
+[UPLOADS_DIR, GENERATED_DIR].forEach((dir) => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+});
+
+app.use("/uploads", express.static(UPLOADS_DIR));
+app.use("/generated", express.static(GENERATED_DIR));
+
+// ---- helpers ----
+function baseUrl(req) {
+  // Se non impostato in env, usa host della richiesta
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers.host;
+  return process.env.BASE_URL || `${proto}://${host}`;
+}
+
+// ---- health & data ----
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, service: "kanthera-backend" });
+});
+
+app.get("/api/sites", (req, res) => {
+  const { sites } = readSeed();
+  res.json(sites || []);
+});
+
+app.get("/api/workers", (req, res) => {
+  const { workers } = readSeed();
+  res.json(workers || []);
+});
+
+// ---- POS: generate PDF ----
+app.post("/api/pos", async (req, res) => {
   try {
-    const fpath = req.file.path;
-    let ocrText = '';
-    if (visionClient) {
-      const [result] = await visionClient.textDetection(fpath);
-      ocrText = (result.fullTextAnnotation && result.fullTextAnnotation.text) || '';
-    } else {
-      ocrText = '(OCR stub) Configure Google Vision to extract text. File saved at ' + fpath;
+    const { site, workers = [], vars = {} } = req.body || {};
+    if (!site || !site.id) {
+      return res.status(400).json({ ok: false, error: "Missing site payload" });
     }
-    res.json({ ok:true, file: '/uploads/' + path.basename(fpath), ocr: ocrText });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok:false, error: String(err) });
+
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `POS_${site.id}_${ts}.pdf`;
+    const filePath = path.join(GENERATED_DIR, fileName);
+
+    // PDF basic
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const stream = fs.createWriteStream(filePath);
+    doc.pipe(stream);
+
+    doc.fontSize(18).text("Piano Operativo di Sicurezza (POS)", { align: "center" });
+    doc.moveDown();
+
+    doc.fontSize(12).text(`Cantiere: ${site.name}`);
+    doc.text(`Indirizzo: ${site.address}`);
+    doc.text(`Committente: ${site.client} (${site.client_cf_piva || "N/A"})`);
+    doc.text(`CSE: ${site?.cse?.name || "-"}  (${site?.cse?.email || "-"})`);
+    doc.text(`Periodo: ${site?.dates?.start || "-"} → ${site?.dates?.end || "-"}`);
+
+    doc.moveDown();
+    doc.fontSize(14).text("Lavoratori:", { underline: true });
+    workers.forEach((w) => {
+      doc.fontSize(12).text(`- ${w.name} (${w.role}) • Corso: ${w?.docs?.corso || "N/A"} • Visita: ${w?.docs?.visita || "N/A"}`);
+    });
+
+    doc.moveDown();
+    doc.fontSize(14).text("Attività / Rischi / Misure:", { underline: true });
+    doc.fontSize(12).text(`Attività: ${vars.activities || "—"}`);
+    doc.text(`Rischi: ${vars.risks || "—"}`);
+    doc.text(`Misure: ${vars.measures || "—"}`);
+
+    doc.end();
+
+    // quando finisce lo stream, rispondi con link
+    stream.on("finish", () => {
+      const rel = `/generated/${fileName}`;
+      const url = `${baseUrl(req)}${rel}`;
+      res.json({ ok: true, file: rel, url });
+    });
+
+    stream.on("error", (e) => {
+      console.error("PDF stream error:", e);
+      res.status(500).json({ ok: false, error: "PDF generation failed" });
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, error: "POS error" });
   }
 });
 
-app.listen(PORT, ()=>console.log('Kanthera backend running on http://localhost:'+PORT));
+// ---- OCR upload (stub) ----
+// file <= 15MB, estensioni: pdf/jpg/jpeg/png
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_, __, cb) => cb(null, UPLOADS_DIR),
+    filename: (_, file, cb) => {
+      const ts = Date.now();
+      const clean = file.originalname.replace(/[^\w.\-]/g, "_");
+      cb(null, `${ts}_${clean}`);
+    },
+  }),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /pdf|jpg|jpeg|png/i.test(file.mimetype) || /\.(pdf|jpg|jpeg|png)$/i.test(file.originalname);
+    cb(ok ? null : new Error("Unsupported file type"));
+  },
+});
+
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: "File missing" });
+
+    const rel = `/uploads/${req.file.filename}`;
+    const url = `${baseUrl(req)}${rel}`;
+
+    // OCR STUB — evita errori se Vision non configurato
+    const ocrText = `(OCR stub) File caricato correttamente: ${req.file.originalname}\nPercorso: ${rel}\nNota: abilita Google Vision per OCR reale.`;
+
+    res.json({ ok: true, file: rel, url, ocr: ocrText });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, error: e.message || "Upload error" });
+  }
+});
+
+// ---- start ----
+app.listen(PORT, () => {
+  console.log(`Kanthera backend running on port ${PORT}`);
+});
