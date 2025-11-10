@@ -241,6 +241,49 @@ app.delete("/api/sites/:id/users/:user_id", async (req,res)=>{
   res.json({ok:true, roles:s.roles});
 });
 
+/* ---- Assegnazione lavoratori al cantiere ---- */
+// Ritorna l'elenco completo dei worker (oggetti) assegnati al cantiere
+app.get("/api/sites/:id/workers", async (req, res) => {
+  const sites   = await readJson(SITES_FILE);
+  const workers = await readJson(WORKERS_FILE);
+  const s = sites.find(x => x.id === req.params.id);
+  if (!s) return res.status(404).json({ ok:false, error:"site not found" });
+  const list = (s.workers || []).map(id => workers.find(w => w.id === id)).filter(Boolean);
+  res.json(list);
+});
+
+// Aggiunge un worker al cantiere (se non già presente)
+app.post("/api/sites/:id/workers", async (req, res) => {
+  const { worker_id } = req.body || {};
+  if (!worker_id) return res.status(400).json({ ok:false, error:"worker_id required" });
+
+  const sites   = await readJson(SITES_FILE);
+  const workers = await readJson(WORKERS_FILE);
+
+  const s = sites.find(x => x.id === req.params.id);
+  if (!s) return res.status(404).json({ ok:false, error:"site not found" });
+
+  const existsWorker = workers.some(w => w.id === worker_id);
+  if (!existsWorker) return res.status(404).json({ ok:false, error:"worker not found" });
+
+  s.workers = s.workers || [];
+  if (!s.workers.includes(worker_id)) s.workers.push(worker_id);
+
+  await writeJson(SITES_FILE, sites);
+  res.json({ ok:true, workers: s.workers });
+});
+
+// Rimuove un worker dal cantiere
+app.delete("/api/sites/:id/workers/:worker_id", async (req, res) => {
+  const sites = await readJson(SITES_FILE);
+  const s = sites.find(x => x.id === req.params.id);
+  if (!s) return res.status(404).json({ ok:false, error:"site not found" });
+  s.workers = (s.workers || []).filter(id => id !== req.params.worker_id);
+  await writeJson(SITES_FILE, sites);
+  res.json({ ok:true, workers: s.workers });
+});
+
+
 /* -------------------- Workers -------------------- */
 app.get("/api/workers", async (req, res) => {
   const workers = await readJson(WORKERS_FILE);
